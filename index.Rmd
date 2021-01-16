@@ -1,0 +1,590 @@
+---
+title: "El comercio exterior español"
+subtitle: "Hugo Martin Chisvert(martiin@alumni.uv.es)" #- pongo tú nombre ahí para q aparezca más grande q el de la UV
+author: "Universitat de València"
+date: "Diciembre de 2020 (actualizado el `r format(Sys.time(), '%d-%m-%Y')`)"
+output:
+  html_document:
+    #css: "./assets/my_css_file.css"
+    theme: paper
+    highlight: textmate 
+    toc: true
+    toc_depth: 3 
+    toc_float: 
+      collapsed: true
+      smooth_scroll: true
+    self_contained: true
+    number_sections: false
+    df_print: kable
+    code_download: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r packages-setup, include = FALSE}
+library(tidyverse)
+library(klippy)  #- remotes::install_github("rlesur/klippy")
+library(knitr)
+library(kableExtra)
+library(rio)
+library(here)
+library(stringr)
+library(forcats)
+library(DT)
+library(scales)
+library(naniar)
+library(ggtext)
+```
+
+```{r chunk-setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, message = FALSE, warning = FALSE, 
+                      #results = "hold",
+                      cache = FALSE, cache.path = "/caches/", comment = "#>",
+                      #fig.width = 7, #fig.height= 7,   
+                      #out.width = 7, out.height = 7,
+                      collapse = TRUE,  fig.show = "hold",
+                      fig.asp = 7/9, out.width = "60%", fig.align = "center")
+knitr::opts_chunk$set(dev = "png", dev.args = list(type = "cairo-png"))
+```
+
+```{r options-setup, include = FALSE}
+options(scipen = 999) #- para quitar la notación científica
+options("yaml.eval.expr" = TRUE) 
+```
+
+
+```{r klippy, echo = FALSE}
+klippy::klippy(position = c("top", "right")) #- remotes::install_github("rlesur/klippy")
+```
+
+<hr class="linea-black">
+
+Trabajo elaborado para la asignatura "Programación y manejo de datos en la era del Big Data" de la Universitat de València durante el curso 2020-2021. El repo del trabajo está [aquí](https://github.com/xi765/trabajo_BigData){target="_blank"}. La página web de la asignatura y los trabajos de mis compañeros pueden verse [aquí](https://perezp44.github.io/intro-ds-20-21-web/07-trabajos.html){target="_blank"}.
+
+<!-- El párrafo de arriba has de dejarlo casi igual, 
+        solo HAS de SUSTITUIR las 2 veces que aparece "perezp44" por tu usuario de Github-->
+
+<hr class="linea-red">
+
+# 1. Introducción
+
+La razón por la que he escogido hacer mi trabajo sobre este tema es mi interés por el comercio internacional, ya que es interesante e importante para la economía. 
+
+En cuanto al objetivo del trabajo, principalmente es poder reflejar de manera sencilla tanto la estructura del sector exterior español como su situación a nivel internacional.
+
+# 2. Datos
+
+La fuente principal de los datos para mi proyecto ha sido el portal DataComex, que es administrado por el Ministerio de comercio, industria y turismo. Este portal ofrece una gran variedad de datos sobre el comercio español, siendo el más completo de todos los que he consultado. Sin embargo, tiene algunos inconvenientes respecto a otros portales como eurostat. El mayor inconveniente de este portal que he encontrado durante la realización del proyecto han sido los acentos, ya que al cargarlos en R aparecían de esta forma: AndalucÃ­a. Más adelante explicaré cómo he resuelto este problema. En cuanto a la obtención de los datos, esta plataforma no tiene API por lo que he recurrido a descargar los datos a través del navegador y cargarlos en github.
+
+Excepcionalmente he utilizado datos de la organización mundial del comercio (OMC) y del Banco Mundial. A pesar de que estas plataformas si que cuentan con una API, como sólo las he utilizado de manera excepcional he recurrido al mismo metodo de obtención de los datos anterior: descargarlos a través del navegador y cargarlos en github.
+
+## 2.1. Problemas limpiando los datos
+
+El procesado de los datos ha sido con diferencia la parte más laboriosa. A continuación explicaré algunos de los problemas a los que he tenido que hacer frente.
+
+El primer problema con el que me encontré es un ejemplo perfecto de cómo resolver un pequeño problema de programación, que a simple vista parece una tontería, puede llevar horas y horas.
+
+Los datos del PIB anual de todos los países del mundo, de los cuales sólo acabe utilizando los datos de España e Italia, presentaba los años de la siguiente forma : 
+```{r, echo=FALSE}
+datos <- "https://raw.githubusercontent.com/xi765/MiProyectoIndividualArchivos/main/GDPWorld.csv"
+dfb <- rio::import(datos)%>% select(c(45:50)) %>% slice(0)
+dfb
+```
+Como se puede observar, sobran tanto los corchetes como su contenido. A pesar de que ya conocía la función str_remove_all(), el patrón de dicha función hay que escribirlo en lenguaje regex. Dicho lenguaje me es totalmente desconocido, por lo que después de estar horas probando diferentes combinaciones y buscando información hallé la respuesta en un post de stackoverflow. La solución fue la siguiente:
+```{r, eval = FALSE}
+mutate(name = str_remove_all(name,"\\[[^\\]]*\\]")
+```
+
+En cuanto a los datos procedentes del portal DataComex, me he encontrado dos problemas recurrentes: el formato de los números y los acentos. 
+
+El problema de los números fue relativamente sencillo de solucionar, una vez caí en que la razón por la que no me dejaba cambiar el formato de carácter a numérico era el formato de los números fue sencillo de solucionar. Con la ya mencionada función str_replace() cambié las comas de los decimales por puntos, usando el siguiente código:
+```{r, eval= FALSE}
+mutate(valor = str_replace(valor,"[,]","."))
+```
+
+Los acentos fueron más difíciles de solucionar, ya que no sólo tuve que dedicarle bastante tiempo a pensar la solución, sino que la propia solución no era todo lo rápida que me hubiera gustado. Como ya he mencionado en el punto anterior, al cargar los datos en R los acentos aparecían de la siguiente forma: "AndalucÃ­a". Para solucionar este problema usé la función case_when(), empleando el siguiente código:
+```{r, eval= FALSE}
+mutate(columna = case_when(columna == "AndalucÃ­a" ~ "Andalucía",
+                           columna == "AragÃ³n" ~ "Aragón",
+                           columna == "Castilla y LeÃ³n" ~ "Castilla y León",
+                           columna == "CataluÃ±a" ~ "Cataluña",
+                           columna == "Murcia, RegiÃ³n de" ~ "Murcia",
+                           columna == "PaÃ­s Vasco" ~ "País Vasco", 
+                           columna == columna ~ columna))
+```
+
+Estos han sido sólo algunos de los inconvenientes que me he encontrado durante la limpieza de los datos, ya que realmente han sido muchos más. Además de los ya mencionados, también he tenido que: ordenar las variables usando factores, pivotar las tablas, agrupar, filtrar, hacer mutates, cambiar nombres de las variables etc... En definitiva: He aplicado todo lo que hemos estudiado de la mejor manera que he sido capaz.
+
+## 2.2 Procesado de datos
+
+A continuación presentaré y explicaré brevemente el código que he utilizado para limpiar todos los datos.
+
+### Datos del Banco Mundial
+
+Además del ya mencionado problema del formato de la fecha, los datos del Banco Mundial también me ocasionaron problemas con los NAs. Estos datos representaban los NAs con "..", lo que también me llevó trabajo corregir. Finalmente lo solucioné con la función replace_with_na() del paquete naniar. Además de eso, transformé la tabla a formato largo, cambié los valores del PIB de dólares a Millones de dólares y renombré las variables con la función setNames(). Finalmente exporté los datos limpios y los subí a github.
+```{r,eval=FALSE}
+datos <- here::here("Data","GDPWorld.csv")
+#Limpieza
+dfa <- rio::import(datos) %>% pivot_longer(cols = 5:65) %>%
+                              select(-c(2)) %>% naniar::replace_with_na(replace = list(value = ".."))%>%
+                              mutate(name = str_remove_all(name,"\\[[^\\]]*\\]"), name = as.numeric(name), value = as.numeric(value), value = (value/1000000)) %>%
+                              setNames(c("indicador","country","countryiso3code","year","value")) #Ahora está en Millones de dolares
+#Exportación
+rio::export(dfa,file = here::here("Data","GDPWorldC.csv"))
+```
+
+### Organización Mundial del Comercio
+
+Los datos de las importaciones y exportaciones por país fueron ligeramente más sencillos de limpiar que los del Banco Mundial, aunque seguí el mismo procedimiento: los importé, los limpié, los exporté y los subí a github. La limpieza de estos datos básicamente consistió en: eliminar columnas irrelevantes con select() y reubicarlas con relocate(),filtrar los datos para quedarme sólo con los datos totales y cambiar los nombres tanto de filas como de columnas. Quizá lo más relevante de este trozo de código fue que utilicé la función if_else() para cambiar los nombres de los indicadores de importaciones y exportaciones.
+```{r, eval=FALSE}
+datos <- here::here("Data","XMWorld.csv")
+#Limpieza
+dfb <- rio::import(datos) %>% select(-c(1,2,7,8,9,16,17,21,22,23)) %>%
+                             rename("product_code" = 7) %>%
+                             filter(product_code == "TO") %>% select(-c(5:11)) %>%
+                             mutate(Indicator = if_else(Indicator=="Merchandise imports by product group – annual","importsy","exportsy")) %>%
+                             relocate(6,.after = 4) %>%
+                             setNames(c("indicador","countrycode","countryiso3code","country","year","unidad","value"))
+#Exportación
+rio::export(dfb,file = here::here("Data","XMWorldC.csv"))
+```
+
+### DataComex
+
+En primer lugar descargué las importaciones y exportaciones anuales totales de España. Trás subirlos a github procedí a limpiarlos. Estos datos estaban bastante limpios, por lo que solamente tuve que hacer un par de modificaciones. Cambié los nombres de las variables, esta vez usando la función rename_at() del paquete dyplr, cambié el formato de los números usando el metodo explicado anteriormente y por último filtré las fechas para eliminar algunos datos irrelevantes.
+```{r, eval=FALSE}
+url <- "https://raw.githubusercontent.com/xi765/MiProyectoIndividualArchivos/main/DataComex_201130122036.csv"
+data <- read.csv(url) %>% rename_at(vars(colnames(data)), ~ c("Country","Date","Columna","Variable","Valor")) %>% 
+                          filter(Date != "Total Fechas") %>% 
+                          mutate(Valor = stringr::str_replace(Valor,"([,])","."),Valor = as.numeric(Valor), Date = as.numeric(Date))
+
+```
+
+En segundo lugar busqué los datos de importaciones y exportaciones españolas por continente de origen y destino. Al igual que los datos anteriores, los alojé en github. Tuve problemas con los nombres de los continentes, ya que el formato no era adecuado y además algunos nombres tenían acentos. Para solucionar este problema opté por la ya mencionada función case_when(), con la que cambié los nombres antiguos por unos más claros. A partir de estos datos hice dos tablas distintas: una con las exportaciones e importaciones por continente y otra con la evolución de estos mismos flujos pero sólo con la UE 28. Lo más complejo de este código fue el obtener los porcentajes, ya que la variable Total estaba en la misma columna que las variables por continente. Para extraer dicha variable utilicé una combinación de la función inner_join() y la función filter(), para posteriormente obtener el porcentaje mediante la función mutate().
+```{r, eval=FALSE}
+#Exportaciones e importaciones por continentes en millones de euros (fuente datacomex)
+datos <- here::here("Data","XMContinentes.csv")
+dfxmc <- rio::import(datos) %>% filter(subfila != "Total seleccionado") %>% select(-c(4)) %>%
+mutate(fila = case_when( fila == "AF - Africa" ~ "Africa", fila == "AM - AmÃ©rica" ~ "America", fila == "AS - Asia" ~"Asia", fila == "OC - OceanÃ­a" ~ "Oceania", fila == "UE - UniÃ³n Europea 28 paÃ­ses(d.2013-07 h.2020-01)" ~ "Union Europea (28)", fila == "Total Mundo" ~ "Total"), valor = str_replace(valor,"[,]","."), valor = as.numeric(valor), subfila = as.numeric(subfila))
+#EXPORTACIONES POR CONTINENTE
+aa <- inner_join(x = dfxmc %>% filter(fila != "Total"),y = dfxmc %>% filter(fila == "Total"), by = c("columna","subfila")) %>% select(-c(5)) %>% mutate(porc = (valor.x/valor.y)) %>% filter(subfila == 2019)
+#EXPORTACIONES E IMPORTACIONES A LA UE
+dfexpc <- dfxmc %>% filter(fila == "Union Europea (28)")
+dfexpcb <- inner_join(dfexpc,espxm, by = c("subfila"="Date","columna"="Variable")) %>% select(-c(5)) %>% mutate(valorporc = (valor/ValorM))
+```
+En tercer lugar busqué los flujos comerciales de España con el resto de países. La limpieza de estos datos fue sencilla, simplemente repetí los pasos que ya he descrito anteriormente, con la excepción de que hice un slice_max() para quedarme solamente con los 10 países más relevantes. Esta tabla también la dividí en dos nuevas tablas: una relativa a las exportaciones y una a las importaciones.
+```{r, eval=FALSE}
+#Exportaciones e importaciones por país en millones de euros
+datos <- here::here("Data","XMPais.csv")
+dfxmp <- rio::import(datos) %>% mutate( valor = str_replace(valor,"[,]","."), valor = as.numeric(valor))
+#EXPORTACIONES
+dfxp <- dfxmp %>% filter(subcolumna == "EXPORT", subfila == "2019", !fila %in% c("Total seleccionado","UE - UniÃ³n Europea 28 paÃ­ses(d.2013-07 h.2020-01)")) %>% slice_max(order_by = valor,n = 10)
+#IMPORTACIONES
+dfmp <- dfxmp %>% filter(subcolumna == "IMPORT", subfila == "2019", !fila %in% c("Total seleccionado","UE - UniÃ³n Europea 28 paÃ­ses(d.2013-07 h.2020-01)")) %>% slice_max(order_by = valor,n = 10)
+```
+En quinto lugar busqué y limpíe los datos de flujos comerciales por producto y año para hacer una tabla. En este código si se puede apreciar mayor complejidad que respecto a los anteriores. Además de emplear algunos metodos que ya utilicé anteriormente cómo la función case_when() para arreglar los nombres o la combinación de las funciones inner_join() y filter() para sacar porcentajes, también utilicé algunos nuevos. Por ejemplo, descubrí las funciones comma() y percent(), que utilicé para que los datos se vieran más limpios en la tabla.
+```{r, eval=FALSE}
+#XM POR PRODUCTO Y FECHA EN MILLONES DE EUROS
+datos <- here::here("Data","XMProducto.csv")
+dfprod <- rio::import(datos) %>% select(-c(2)) %>% filter(columna %in% c("2015","2016","2017","2018","2019","2020")) %>% mutate( valor = str_replace(valor,"[,]","."), valor = as.numeric(valor))
+
+a <- inner_join(x = dfprod, y = dfprod %>% filter(fila == "Total seleccionado"), by = c("columna","subcolumna")) %>% mutate(porc = (valor.x/valor.y)) %>% select(-c(5,6)) %>% mutate(fila.x = case_when(fila.x == "Total seleccionado" ~ "Total", fila.x == "1 ALIMENTACIÃ“N, BEBIDAS Y TABACO" ~ "Alimentación, bebidas y tabaco", fila.x == "2 PRODUCTOS ENERGETICOS" ~ "Productos energéticos", fila.x == "3 MATERIAS PRIMAS" ~ "Materias primas", fila.x == "4 SEMIMANUFACTURAS" ~ "Semimanufacturas", fila.x == "5 BIENES DE EQUIPO" ~ "Bienes de equipo",fila.x == "6 SECTOR AUTOMOVIL" ~ "Sector automóvil",fila.x == "7 BIENES DE CONSUMO DURADERO" ~ "Bienes de consumo duradero",fila.x == "8 MANUFACTURAS DE CONSUMO" ~ "Manufacturas de consumo",fila.x == "9 OTRAS MERCANCIAS" ~ "Otras mercancías"), porc = percent(porc), valor.x = comma(valor.x, digits = 0))
+aa <- a %>% pivot_wider(names_from = c(subcolumna,columna), values_from = c(valor.x,porc)) %>% rename(" " = 1) %>% select(1,2,14,3,15,4,16,5,17,6,18,7,19,8,20,9,21,10,22,11,23,12,24,13,25) %>% setNames(c("","Mill. de €","%","Mill. de €","%","Mill. de €","%","Mill. de €","%","Mill. de €","%","Mill. de €","%","Mill. de €","%","Mill. de €","%","Mill. de €","%","Mill. de €","%","Mill. de €","%","Mill. de €","%"))
+```
+En sexto lugar utilicé datos de exportaciones e importaciones por provincias, aunque finalmente sólo usé las exportaciones. El código ya tiene poco nuevo, lo único es que en esta ocasión además de transformar los valores a Millones de euros también los transformé a logaritmos con la función log().
+```{r, eval=FALSE}
+#PROVINCIAS MÁS EXPORTADORAS
+url <- "https://raw.githubusercontent.com/xi765/MiProyectoIndividualArchivos/main/exp_imp_prov_2019.csv"
+exppr <- read.csv(url)
+exppr <- exppr %>% select(-c(subfila,subcolumna))
+exppr <- exppr %>% rename_at(vars(colnames(exppr)), ~ c("Provincia","Variable","Valor"))
+exppr <- exppr %>% mutate(Valor = stringr::str_replace(Valor,"([,])",".")) %>% mutate(Valor = as.numeric(Valor), ValorEnMill = (Valor/1000000), ValorLog = log(Valor, base = exp(2)))
+exppr <- exppr %>% mutate(Valorporc = (Valor/exppr[1,3]))
+```
+En septimo lugar preparé los datos de exportaciones por producto y provincia en 2019 para hacer una nueva tabla. De nuevo seguí los pasos descritos anteriormente. Cabe destacar que escribiendo este código tuve que volver a descifrar el lenguaje regex, ya que  los nombres de los productos tenían varios números que finalmente conseguí quitar con la ya mencionada funcion str_remove().
+```{r, eval=FALSE}
+#DATOS DE EXPORTACIÓN POR PRODUCTO Y PROVINCIA EN MILLONES DE EUROS 2019
+datos <- here::here("Data","XComProd.csv")
+dfccaa <- rio::import(datos) %>% select(c(1,3,5)) %>% filter(!columna %in% c("Total Nacional","No determinado")) %>% mutate( valor = str_replace(valor,"[,]","."), valor = as.numeric(valor), fila = str_remove(fila,"[[:digit:]]+"), fila = case_when(fila == "A GRASAS Y ACEITES" ~ "GRASAS Y ACEITES",fila == "B SEMILLAS Y FRUTOS OLEAGINOSOS" ~ "SEMILLAS Y FRUTOS OLEAGINOSOS",fila == "C PIENSOS ANIMALES" ~ "PIENSOS ANIMALES", fila == fila ~ fila), columna = case_when(columna == "AndalucÃ­a" ~ "Andalucía",columna == "AragÃ³n" ~ "Aragón",columna == "Castilla y LeÃ³n" ~ "Castilla y León",columna == "CataluÃ±a" ~ "Cataluña",columna == "Murcia, RegiÃ³n de" ~ "Murcia",columna == "PaÃ­s Vasco" ~ "País Vasco", columna == columna ~ columna))
+aa <- dfccaa %>% pivot_wider(names_from = columna, values_from = valor) %>% column_to_rownames("fila")
+```
+Por último limpié datos de transporte de mercancías. En este código además de las técnicas descritas anteriormente, también tuve que agrupar una serie de variables, creando una nueva variable llamada "Otro". Hice esto porque habían cuatro variables que representaban muy poco, por lo que pensé que de esta forma se vería más claro. Para realizar esta agrupación primero cambié los nombres de las variables por "Otro", luego con una combinación de group_by() y summarise() junto a la función sum() conseguí el resultado que buscaba.
+```{r, eval=FALSE}
+#Medios de transporte más utilizados 2019 en millones de euros
+datos <- here::here("Data","XMMedioTransporte.csv")
+dftrans <- rio::import(datos)%>% select(-c(2)) %>% mutate( valor = str_replace(valor,"[,]","."), valor = as.numeric(valor), fila = str_remove(fila,"[[:digit:]]+"), fila = case_when( fila == "  MarÃ­timo" ~ "  Marítimo", fila == "  TrÃ¡fico postal" ~ "  Tráfico postal", fila == "  PropulsiÃ³n propia" ~ "  Propulsión propia", fila == fila ~ fila)) %>% filter(columna != "Total seleccionado")
+
+a <- inner_join( x = dftrans%>%filter(subcolumna == "EXPORT"), y = dftrans%>%filter(subcolumna == "IMPORT"), by = c("fila","columna")) %>% mutate(totalxm = (valor.x+valor.y)) %>% select(-c(3:6))
+aa <- inner_join( x = a%>%filter(fila!="Total modo transporte"), y = a %>% filter(fila=="Total modo transporte"), by = c("columna")) %>% mutate(porc = (totalxm.x/totalxm.y)) %>% select(-c(4,5)) %>% mutate(fila.x = case_when(fila.x == "  Desconocido" ~ "Otro",fila.x == "  Plataforma fija" ~ "Otro",fila.x == "  Propulsión propia" ~ "Otro",fila.x == "  Tráfico postal" ~ "Otro",fila.x == "  Transporte fluvial" ~ "Otro", fila.x == fila.x ~ fila.x)) %>% group_by(columna,fila.x) %>% summarise(totalxm.x = sum(totalxm.x), porc = sum(porc)) %>% group_by(columna) %>% mutate(fila.x = factor(fila.x, levels = fila.x[order(porc)]))
+```
+
+# 3. El sector exterior español
+## 3.1 Los socios comerciales de España
+### Continentes
+En este gráfico de barras podemos ver las grandes áreas con las que comercia España. Lo más relevante de este gráfico es la importancia de la Unión Europea, suponiendo un más de un 60% de nuestras exportaciones y más de un 50% de nuestras importaciones, siendo así nuestro principal socio comercial. También cabe destacar el importante saldo positivo de la balanza comercial con la Unión Europea, que por otra parte se ve contrarestado por el saldo negativo que sostiene España frente a Asia.
+
+#### Código
+
+Para elaborar este gráfico he usado el geoma geom_bar(). A dicho geoma le he añadido dos opciones stat = "identity" y position = "dodge", la primera para poder representar valores continuos y la segunda para presentar dos columnas por continente. Adicionalmente he puesto el eje y en porcentaje usando scale_y_continuous(breaks = seq(0,0.65,0.1), labels = scales::percent). 
+
+En cuanto al tema, a parte de quitar las líneas del eje menor y, el eje x y los bordes, también he modificado la leyenda. Con legend.position = "top" he cambiado la posición de la leyenda desde la derecha hasta arriba del gráfico.
+```{r,echo=FALSE, eval=TRUE}
+
+#Exportaciones e importaciones por continentes en millones de euros (fuente datacomex)
+datos <- "https://raw.githubusercontent.com/xi765/MiProyectoIndividualArchivos/main/XMContinentes.csv"
+dfxmc <- rio::import(datos) %>% filter(subfila != "Total seleccionado") %>% select(-c(4)) %>%
+mutate(fila = case_when( fila == "AF - Africa" ~ "Africa", fila == "AM - AmÃ©rica" ~ "America", fila == "AS - Asia" ~"Asia", fila == "OC - OceanÃ­a" ~ "Oceania", fila == "UE - UniÃ³n Europea 28 paÃ­ses(d.2013-07 h.2020-01)" ~ "Union Europea (28)", fila == "Total Mundo" ~ "Total"), valor = str_replace(valor,"[,]","."), valor = as.numeric(valor), subfila = as.numeric(subfila))
+#EXPORTACIONES POR CONTINENTE
+aa <- inner_join(x = dfxmc %>% filter(fila != "Total"),y = dfxmc %>% filter(fila == "Total"), by = c("columna","subfila")) %>% select(-c(5)) %>% mutate(porc = (valor.x/valor.y)) %>% filter(subfila == 2019) %>% group_by(columna) %>% mutate(fila.x = factor(fila.x, levels = fila.x[order(porc, decreasing = TRUE)]))
+```
+```{r,echo=TRUE, eval=TRUE, out.width = "150%"}
+ggplot(aa, aes(x = fila.x, y = porc, fill = columna)) + geom_bar(stat = "identity", position = "dodge", color = "#000000") +
+               scale_y_continuous(breaks = seq(0,0.65,0.1), labels = scales::percent) +
+               scale_fill_discrete(labels = c("% del total de Exportaciones","% del total de Importaciones")) +
+              labs(fill=NULL,
+               x=NULL,
+               y=NULL,
+               title="Flujos comerciales por continente",
+               subtitle = "Año 2019",
+               caption="Fuente: DataComex") +
+               theme(
+              panel.background = element_rect( fill = "#ffffff", colour = "#ffffff"),
+              panel.grid  = element_line( colour ="grey"),
+              axis.ticks = element_blank(),
+              plot.title = element_text(vjust = 2.5, size = 15),
+              panel.border = element_blank(),
+              panel.grid.minor.y = element_blank(),
+              panel.grid.major.x = element_blank(),
+              legend.margin = margin(t=25),
+              legend.position = "top",
+              legend.background = element_rect( fill = "#ffffff", colour = "#ffffff" ),
+              plot.margin = margin(t = 5, r = 25, b = 5,15))
+```
+
+### Países
+
+En estos gráficos fragmentamos la información analizada en el apartado anterior, viendo la misma información pero por país. Estos gráficos nos reafirman el hecho de que Europa es nuestro principal socio comercial, especialmente en lo referente a las exportaciones. Los cinco países a los que exportamos más mercancías por valor son europeos, siendo Francia nuestro principal cliente. En cuanto a las importaciones la situación es ligeramente distinta, aunque Alemania y Francia siguen siendo los países de los que más importamos, China se encuentra en tercera posición y Estados Unidos en la quinta.
+
+#### Código
+
+Para hacer este gráfico he vuelto a usar un geom_bar(), aunque en esta ocasión he optado por representar las Exportaciones e Importaciones por separado. El tema que he usado ha sido el mismo que en el gráfico anterior, a excepción de el eje y. En esta ocasión los valores del eje y estaban en millones, así que usé la función scale_y_continuous() para cambiar el formato y hacerlo más sencillo. Dentro de dicha función incluí labels = paste(scales::comma(seq(0,45000,5000)),"M€"), que básicamente ponía en formato coma la secuencia escrita y le pegaba un "M€".
+```{r,echo=FALSE, eval=TRUE}
+#Exportaciones e importaciones por país en millones de euros
+datos <- "https://raw.githubusercontent.com/xi765/MiProyectoIndividualArchivos/main/XMPais.csv"
+dfxmp <- rio::import(datos) %>% mutate( valor = str_replace(valor,"[,]","."), valor = as.numeric(valor))
+#EXPORTACIONES
+dfxp <- dfxmp %>% filter(subcolumna == "EXPORT", subfila == "2019", !fila %in% c("Total seleccionado","UE - UniÃ³n Europea 28 paÃ­ses(d.2013-07 h.2020-01)")) %>% slice_max(order_by = valor,n = 10) %>% mutate(fila = factor(fila, levels = fila[order(valor, decreasing = TRUE)]))
+#IMPORTACIONES
+dfmp <- dfxmp %>% filter(subcolumna == "IMPORT", subfila == "2019", !fila %in% c("Total seleccionado","UE - UniÃ³n Europea 28 paÃ­ses(d.2013-07 h.2020-01)")) %>% slice_max(order_by = valor,n = 10) %>% mutate(fila = factor(fila, levels = fila[order(valor, decreasing = TRUE)]))
+```
+```{r,echo=TRUE, eval=TRUE, out.width = "150%"}
+#Exportaciones
+ggplot(dfxp, aes(x = fila, y = valor, fill = fila)) + geom_bar(stat = "identity",color = "#000000") +
+             scale_fill_brewer(palette = "Spectral", labels = c("Francia","Alemania","Italia","Portugal","Reino Unido","Estados Unidos","Países Bajos","Marruecos","Bélgica","China")) +
+             scale_x_discrete(labels = c("Francia","Alemania","Italia","Portugal","Reino Unido","Estados Unidos","Países Bajos","Marruecos","Bélgica","China")) +
+             scale_y_continuous(breaks = seq(0,45000,5000), labels = paste(scales::comma(seq(0,45000,5000)),"M€")) +
+             labs(fill=NULL,
+               x=NULL,
+               y=NULL,
+               title="Exportaciones por país",
+               subtitle = "Año 2019",
+               caption="Fuente: DataComex") +
+               theme( plot.background = element_rect( fill = "#ffffff"),
+              panel.background = element_rect( fill = "#ffffff", colour = "#ffffff", size = 0.1 ),
+              panel.grid  = element_line( colour ="grey"),
+              panel.grid.major.x = element_blank(),
+              panel.grid.minor.y = element_blank(),
+              axis.ticks = element_blank(),
+              axis.text.x = element_text(angle = 75, face = "bold", vjust = 0.95, hjust = 1),
+              plot.title = element_text(vjust = 2.5, size = 15),
+              panel.border = element_blank(),
+              legend.position = "none",
+              plot.margin = margin(t = 5, r = 25, b = 5,15),
+              strip.background = element_rect(fill = "#e8d7a3",colour = NULL))
+
+```
+
+```{r echo=FALSE, out.width = "150%"}
+#Importaciones
+ggplot(dfmp, aes(x = fila, y = valor, fill = fila)) + geom_bar(stat = "identity",color = "#000000") +
+             scale_fill_brewer(palette = "Spectral", labels = c("Francia","Alemania","Italia","Portugal","Reino Unido","Estados Unidos","Países Bajos","Marruecos","Bélgica","China")) +
+             scale_x_discrete(labels = c("Alemania","Francia","China","Italia","Estados Unidos","Países Bajos","Reino Unido","Portugal","Turquía","Bélgica")) +
+             scale_y_continuous(breaks = seq(0,45000,5000), labels = paste(scales::comma(seq(0,45000,5000)),"M€")) +
+             labs(fill=NULL,
+               x=NULL,
+               y=NULL,
+               title="Importaciones por país",
+              subtitle = "Año 2019",
+               caption="Fuente: DataComex") +
+               theme( plot.background = element_rect( fill = "#ffffff"),
+              panel.background = element_rect( fill = "#ffffff", colour = "#ffffff", size = 0.1 ),
+              panel.grid  = element_line( colour ="grey"),
+              panel.grid.major.x = element_blank(),
+              panel.grid.minor.y = element_blank(),
+              axis.ticks = element_blank(),
+              axis.text.x = element_text(angle = 75, face = "bold", vjust = 0.95, hjust = 1),
+              plot.title = element_text(vjust = 2.5, size = 15),
+              panel.border = element_blank(),
+              legend.position = "none",
+              plot.margin = margin(t = 5, r = 25, b = 5,15),
+              strip.background = element_rect(fill = "#e8d7a3",colour = NULL))
+```
+
+### Europa: Nuestro gran aliado
+
+Con este gráfico he querido hacer un mayor énfasis en la relevancia que tiene la Unión Europea como socio comercial de España. En el gráfico podemos ver la evolución del peso de los flujos comerciales con la Unión Europea desde 1995 hasta la actualidad. Hay dos aspectos que cabe destacar sobre este gráfico: Primero la caída de los flujos comerciales con la Unión Europea desde principios de sigo hasta el 2012 aproximadamente. Esto podría haber sido causado por el avance de la globalización, que ha hecho que terceros países en vías de desarrollo entren a competir directamente en los mercados europeos, un claro ejemplo de esto sería el aumento de las importaciones chinas; Segundo, la reciente brusca recuperación que han sufrido ambos flujos. Esto lo podríamos asociar a la crisis del Covid-19, que ha supuesto un freno a los flujos de comercio internacional, esta crisis ha afectado más al comercio con países fuera de la UE porque dichos países además de estar más alejados, también han tenido mayores trabas.
+
+#### Código
+
+Para realizar este gráfico he usado un geom_line(). En cuanto al tema, he reciclado el de los gráficos anteriores, a excepción de la leyenda. En este gráfico he incorporado la leyenda en el subtítulo con el paquete ggtext(). Este paquete permite escribir los textos en Markdown, permitiendo entre otras cosas, cambiar el color del texto.
+```{r,echo=FALSE, eval=TRUE}
+url <- "https://raw.githubusercontent.com/xi765/MiProyectoIndividualArchivos/main/DataComex_201130122036.csv"
+
+data <- read.csv(url)
+data <- data %>% rename_at(vars(colnames(data)), ~ c("Country","Date","Columna","Variable","Valor"))
+data <- data %>% filter(Date != "Total Fechas")
+data <- data %>% mutate(Valor = stringr::str_replace(Valor,"([,])","."),Valor = as.numeric(Valor), Date = as.numeric(Date))
+espxm <- data %>% filter(Country == "Total Mundo") %>% select(-c(Columna,Country))
+espxm <- espxm %>% mutate(ValorM = (Valor/1000000)) %>% group_by(Date) %>% mutate(min = min(ValorM), max = max(ValorM))
+#EXPORTACIONES E IMPORTACIONES A LA UE
+dfexpc <- dfxmc %>% filter(fila == "Union Europea (28)")
+dfexpcb <- inner_join(dfexpc,espxm, by = c("subfila"="Date","columna"="Variable")) %>% select(-c(5)) %>% mutate(valorporc = (valor/ValorM))
+```
+```{r,echo=TRUE, eval=TRUE, out.width = "150%"}
+ggplot(dfexpcb, aes(x=subfila, y=valorporc, color = columna)) + geom_line(size=1) +
+        scale_y_continuous(breaks = seq(0.5,0.75,0.05), labels = scales::percent)+
+        scale_x_continuous(breaks = seq(1995,2020,1)) +
+        labs(fill=NULL,
+        x=NULL,
+        y=NULL,
+        title="Flujos comerciales con la Unión Europea (28)",
+        subtitle = "<span style='color:#ff0505;'>Exportaciones</span> e <span style='color:#24ff05;'>Importaciones </span>en % del total",
+        caption="Fuente: DataComex") +
+        scale_color_manual( values = c("EXPORT"="#ff0000","IMPORT"="#24d800"), labels = c("Exp.","Imp.")) +
+        theme( plot.background = element_rect( fill = "#ffffff"),
+              panel.background = element_rect( fill = "#ffffff"),
+              panel.grid  = element_line( colour ="#979e9e"),
+              panel.grid.minor.x = element_blank(),
+              panel.grid.minor.y = element_blank(),
+              panel.grid.major.x = element_blank(),
+              axis.line = element_line(color = "#000000"),
+              axis.ticks = element_line(colour = "#000000"),
+              axis.text = element_text(colour = "#000000"),
+              axis.text.x = element_text(angle = 90),
+              axis.title.y = element_text(vjust = 4),
+              axis.title.x = element_text(hjust = 0.5),
+              plot.title = element_text(hjust = 0.5),
+              plot.subtitle = element_markdown(hjust = 0.5),
+              panel.border = element_rect(fill = NA,colour = "#ffffff"),
+              legend.position = "none")
+```
+
+## 3.2 El sector exterior español
+
+En este gráfico se muestra el total de importaciones y exportaciones por año, además se ha resaltado en amarillo el déficit de la balanza comercial. En este gráfico me gustaría destacar dos cosas: En primer lugar, las dos importantes caídas sufridas en 2008 y 2020; En segundo lugar, el hecho de que el sector exportador español se ha comportado relativamente bien en todos los periodos de crisis económica. Esto lo podemos ver bien observando el déficit de la balanza comercial, en los periodos de crisis este déficit siempre se reduce.
+
+### Código
+Para elaborar este gráfico he seguido el mismo metodo que en el gráfico anterior, sin embargo, esta vez he añadido un geom_ribbon() para representar el déficit de la balanza comercial. Para este geoma he tenido que crear dos nuevas columnas en el dataframe: min y max. Estas columnas las creé con las funciones min() y max(), cogiendo el valor mínimo y máximo de cada año, dichos valores actuan como límites del polígono.
+```{r,echo=FALSE, eval=TRUE}
+#Exportaciones e importaciones ESPAÑA
+url <- "https://raw.githubusercontent.com/xi765/MiProyectoIndividualArchivos/main/DataComex_201130122036.csv"
+data <- read.csv(url)
+data <- data %>% rename_at(vars(colnames(data)), ~ c("Country","Date","Columna","Variable","Valor"))
+data <- data %>% filter(Date != "Total Fechas")
+data <- data %>% mutate(Valor = stringr::str_replace(Valor,"([,])","."),Valor = as.numeric(Valor), Date = as.numeric(Date))
+espxm <- data %>% filter(Country == "Total Mundo") %>% select(-c(Columna,Country))
+espxm <- espxm %>% mutate(ValorM = (Valor/1000000)) %>% group_by(Date) %>% mutate(min = min(ValorM), max = max(ValorM))
+```
+```{r,echo=TRUE, eval=TRUE, out.width = "150%"}
+ggplot(espxm,aes(x = Date, y = ValorM, color = Variable)) +
+        geom_line() +
+        geom_point() +
+        geom_ribbon(aes(x = Date, ymin = min, ymax = max), fill = "#f4ff05", alpha = 0.3, color = NA) +
+        labs(fill=NULL,
+        x=NULL,
+        y=NULL,
+        title="<span style='color:#ff0505;'>Exportaciones</span> e <span style='color:#24ff05;'>Importaciones </span>en España",
+        caption="Fuente: DataComex") +
+        scale_color_manual( values = c("EXPORT"="#ff0000","IMPORT"="#24d800")) +
+        scale_fill_manual( values = c("EXPORT"="#ff0000","IMPORT"="#24d800")) +
+        scale_y_continuous(breaks = seq(0,300000,50000),labels = (paste(scales::comma(seq(0,300000,50000)),"M€"))) +
+        scale_x_continuous(breaks = seq(1995,2020,1)) +
+        theme( plot.background = element_rect( fill = "#ffffff"),
+              panel.background = element_rect( fill = "#ffffff"),
+              panel.grid  = element_line( colour ="#979e9e"),
+              panel.grid.minor.y = element_blank(),
+              panel.grid.major.x = element_blank(),
+              panel.grid.minor.x = element_blank(),
+              axis.ticks = element_line(colour = "#000000"),
+              axis.text = element_text(colour = "#000000"),
+              axis.text.x = element_text(angle = 90),
+              axis.title.y = element_text(vjust = 4),
+              axis.title.x = element_text(hjust = 0.5),
+              axis.line = element_line(color = "#000000"),
+              panel.border = element_rect(fill = NA,colour ="#ffffff"),               plot.title = element_markdown(hjust = 0.5),
+              legend.position = "none",
+              plot.margin = margin(t = 5, r = 10, b = 5,20) )
+```
+
+## Peso y evolución los flujos comerciales
+
+En este gráfico podemos observar la evolución del peso en porcentaje del PIB tanto de las exportaciones como de las importaciones. Me gustaría destacar en primer lugar la divergencia que se produce a partir de 1960 entre las exportaciones y las importaciones, y en segundo lugar la caída que sufrieron ambas en la crisis de 2008. Esta divergencia que se produce a partir de 1960 la podemos asociar a los planes de Estabilización y Desarrollo llevados a cabo en la úlima etapa del franquismo, dichos planes permitieron abrir España al comercio internacional entre otras cosas.
+
+### Código
+Para elaborar este gráfico he seguido el mismo metodo que en el gráfico anterior, únicamente he modificado las líneas menores del eje y y los brakes de la variable x.
+
+```{r,echo=FALSE, eval=TRUE}
+datosx <- "https://raw.githubusercontent.com/xi765/MiProyectoIndividualArchivos/main/XMWorldC.csv"
+datosg <- "https://raw.githubusercontent.com/xi765/MiProyectoIndividualArchivos/main/GDPWorldC.csv"
+#Cogemos datos de España y otros países relevantes en el comercio internacional
+dfa <- rio::import(datosg) %>% filter(countryiso3code %in% c("ESP"))
+dfb <- rio::import(datosx) %>% filter(countryiso3code %in% c("ESP"))
+dft <- inner_join(dfa,dfb, by = c("countryiso3code","year")) %>% select(-c(1,8)) %>% relocate(5, .before = 1) %>% relocate(6, .before = 4) %>% relocate(7, .before = 6) %>% rename("indicador"=1,"country"=2,"gdp"=7,"xm"=8) %>% mutate(porcpib = (xm/gdp))
+#Plot de exportaciones
+
+dfplot <- dft %>% filter(year %in% c(1970:2020))
+```
+```{r,echo=TRUE, eval=TRUE, out.width = "150%"}
+ggplot(dft,aes(x=year,y=porcpib,color=indicador)) + geom_line(size=1) + labs(color=NULL,
+        x=NULL,
+        y=NULL,
+        title="Peso de las <span style='color:#ff0505;'>Exportaciones</span> e <span style='color:#24ff05;'>Importaciones </span>en el PIB",
+        caption="Fuente: DataComex") +
+        scale_x_continuous(breaks = seq(1960,2020,5),limits = c(1960,2019)) +
+        scale_y_continuous(breaks = seq(0,0.3,0.05),labels = scales::percent)+
+        scale_color_manual( values = c("exportsy"="#ff0000","importsy"="#24d800"), labels = c("Exportaciones","Importaciones")) +
+        theme( plot.background = element_rect( fill = "#ffffff"),
+              panel.background = element_rect( fill = "#ffffff"),
+              panel.grid  = element_line( colour ="#979e9e"),
+              panel.grid.major.x = element_blank(),
+              panel.grid.minor.x = element_blank(),
+              axis.ticks = element_line(colour = "#000000"),
+              axis.text.x = element_text(angle = 90),
+              axis.line = element_line(color = "#000000"),
+              plot.title = element_markdown(hjust = 0.5),
+              panel.border = element_rect(fill = NA,colour = "#ffffff"),
+              legend.position = "none")
+```
+
+## Exportación por comunidades
+
+En este gráfico podemos ver las comunidades que exportaron mercancías por más valor en 2019. Cabe destacar la dominancia de Barcelona, muy lejos de Madrid y mucho más de cualquier otra. Nuestra comunidad, Valencia, se encuentra en tercera posición, más cerca de Zaragoza que de Madrid.
+
+### Código
+Esta vez he escogido uno de los temas que ofrece el paquete ggplot, que se parece mucho al que he creado yo y he usado anteriormente. 
+
+En cuanto al gráfico, esta vez he hecho un gráfico estilo Lollipop. Para construir el gráfico he usado un geom_point() junto a un geom_segment(). Para configurar el geom_segment() he usado factores, ya que hay que especificar un punto de inicio y uno de final.
+```{r,echo=FALSE, eval=TRUE}
+#GRÁFICO DE BARRAS PROVINCIAS MÁS EXPORTADORAS
+url <- "https://raw.githubusercontent.com/xi765/MiProyectoIndividualArchivos/main/exp_imp_prov_2019.csv"
+exppr <- read.csv(url)
+exppr <- exppr %>% select(-c(subfila,subcolumna))
+exppr <- exppr %>% rename_at(vars(colnames(exppr)), ~ c("Provincia","Variable","Valor"))
+exppr <- exppr %>% mutate(Valor = stringr::str_replace(Valor,"([,])",".")) %>% mutate(Valor = as.numeric(Valor), ValorEnMill = (Valor/1000000), ValorLog = log(Valor, base = exp(2)))
+exppr <- exppr %>% mutate(Valorporc = (Valor/exppr[1,3]))
+#
+dataplot2 <- exppr %>% filter( Provincia != "Total seleccionado", Variable == "EXPORT") %>% slice_max(order_by = Valorporc, n = 10)
+```
+```{r,echo=TRUE, eval=TRUE, out.width = "150%"}
+theme_set(theme_classic())
+ggplot(dataplot2,aes(y = ValorEnMill, x = forcats::fct_reorder(Provincia, ValorEnMill, .desc = TRUE))) + geom_point() + geom_segment(aes(x=forcats::fct_reorder(Provincia, ValorEnMill, .desc = TRUE),
+                   xend=forcats::fct_reorder(Provincia, ValorEnMill, .desc = TRUE),
+                   y=0,
+                   yend=ValorEnMill))+ 
+      scale_y_continuous(breaks = seq(0,60000,5000),labels = paste(scales::comma(seq(0,60000,5000)),"M€"), limits = c(0,62500)) +
+      scale_x_discrete(labels = c("Barcelona","Madrid","Valencia","Zaragoza","A Coruña","Murcia","Navarra","Bizkaia","Pontevedra","Tarragona"))+ labs(title="Comunidades que más exportan",
+       subtitle="Año: 2019",
+       caption="Fuente: DataComex",
+       x=NULL,
+       y=NULL) +
+  theme(panel.grid.major.y = element_line(colour = "#dadada"),axis.text.x = element_text(angle=65, vjust=0.95, hjust = 1))
+```
+
+```{r,echo=FALSE, eval=TRUE}
+datos <- "https://raw.githubusercontent.com/xi765/MiProyectoIndividualArchivos/main/XComProd.csv"
+dfccaa <- rio::import(datos) %>% select(c(1,3,5)) %>% filter(!columna %in% c("Total Nacional","No determinado")) %>% mutate( valor = str_replace(valor,"[,]","."), valor = as.numeric(valor), fila = str_remove(fila,"[[:digit:]]+"), fila = case_when(fila == "A GRASAS Y ACEITES" ~ "GRASAS Y ACEITES",fila == "B SEMILLAS Y FRUTOS OLEAGINOSOS" ~ "SEMILLAS Y FRUTOS OLEAGINOSOS",fila == "C PIENSOS ANIMALES" ~ "PIENSOS ANIMALES",fila == " PRODUCTOS CÃRNICOS" ~ "PRODUCTOS CÁRNICOS", fila == fila ~ fila), columna = case_when(columna == "AndalucÃ­a" ~ "Andalucía",columna == "AragÃ³n" ~ "Aragón",columna == "Castilla y LeÃ³n" ~ "Castilla y León",columna == "CataluÃ±a" ~ "Cataluña",columna == "Murcia, RegiÃ³n de" ~ "Murcia",columna == "PaÃ­s Vasco" ~ "País Vasco", columna == columna ~ columna), fila = paste(fila,"(Mill. de €)"))
+
+aa <- dfccaa %>% pivot_wider(names_from = columna, values_from = valor) %>% column_to_rownames("fila")
+```
+Adicionalmente he construido una tabla interactiva en la que se muestran las exportaciones por grupo de productos de cada comunidad autónoma en 2019.
+
+He usado el paquete DT para hacerla interactiva y añadirle algunas extensiones:la extensión "Fixed Columns" para que los nombres de las variables no desaparecieran al hacer scroll horizontal y la extensión buttons para añadirle un boton que permite guardar la tabla en formato excel.
+```{r,echo=TRUE, eval=TRUE}
+DT::datatable(aa, extensions = c("FixedColumns","Buttons"),
+  options = list(
+    dom = "Btip",
+    scrollX = TRUE,
+    fixedColumns = TRUE,
+    autoWidth = TRUE,
+    buttons = c("excel"),
+    pageLength = 5))
+```
+
+## Desglose de las exportaciones españolas
+
+En esta tabla he desglosado el total de importaciones y exportaciones españolas por grupos de producto y año. Cabe destacar el peso del sector de las semimanufacturas en nuestras Exportaciones. Respecto a 1995, el sector automóvil ha perdido peso a favor de las semimanufacturas y los bienes de equipo.
+
+### Código
+
+Una vez limpiados los datos he usado el paquete KableExtra para hacer esta tabla. Básicamente he usado la función kbl() para hacer la tabla junto a la función add_header_above() para crear los títulos de cada columna. Finalmente he usado la función kable_styling() con los argumentos "striped" y "hover" para dejarla más aseada.
+```{r,echo=FALSE, eval=TRUE}
+#XM POR PRODUCTO Y FECHA EN MILLONES DE EUROS
+datos <- "https://raw.githubusercontent.com/xi765/MiProyectoIndividualArchivos/main/XMProducto.csv"
+dfprod <- rio::import(datos) %>% select(-c(2)) %>% filter(columna %in% c("1995","2019")) %>% mutate( valor = str_replace(valor,"[,]","."), valor = as.numeric(valor))
+
+a <- inner_join(x = dfprod, y = dfprod %>% filter(fila == "Total seleccionado"), by = c("columna","subcolumna")) %>% mutate(porc = (valor.x/valor.y)) %>% select(-c(5,6)) %>% mutate(fila.x = case_when(fila.x == "Total seleccionado" ~ "Total", fila.x == "1 ALIMENTACIÃ“N, BEBIDAS Y TABACO" ~ "Alimentación, bebidas y tabaco", fila.x == "2 PRODUCTOS ENERGETICOS" ~ "Productos energéticos", fila.x == "3 MATERIAS PRIMAS" ~ "Materias primas", fila.x == "4 SEMIMANUFACTURAS" ~ "Semimanufacturas", fila.x == "5 BIENES DE EQUIPO" ~ "Bienes de equipo",fila.x == "6 SECTOR AUTOMOVIL" ~ "Sector automóvil",fila.x == "7 BIENES DE CONSUMO DURADERO" ~ "Bienes de consumo duradero",fila.x == "8 MANUFACTURAS DE CONSUMO" ~ "Manufacturas de consumo",fila.x == "9 OTRAS MERCANCIAS" ~ "Otras mercancías"), porc = percent(porc), valor.x = comma(valor.x, digits = 0))
+aa <- a %>% pivot_wider(names_from = c(subcolumna,columna), values_from = c(valor.x,porc)) %>% rename(" " = 1)%>% select(1,2,6,3,7,4,8,5,9) %>% slice(1,7,5,6,2,10,8,3,4,9) %>% setNames(c("","Mill. de €","%","Mill. de €","%","Mill. de €","%","Mill. de €","%"))
+```
+
+```{r,echo=TRUE, eval=TRUE}
+kbl(aa, format = "html", booktabs = T, linesep = "") %>% add_header_above(c("","Exportaciones" = 2, "Importaciones" = 2, "Exportaciones" = 2, "Importaciones" = 2)) %>% add_header_above(c("", "1995" = 4, "2019" = 4), line = T) %>%  kable_styling(c("striped","hover")) %>% row_spec(1, bold = TRUE)
+```
+## Medios de transporte más utilizados
+
+En estos gráficos circulares podemos identificar los medios de transporte más utilizados por el sector exterior español. Cabe destacar que desde 1995 se ha reducido la importancia del transporte por carretera a favor del marítimo. También me gustaría destacar el poco peso del transporte por ferrocaril, siendo que España tiene unas muy buenas infraestructuras férreas el ferrocarril podría ser una opción de transporte más sostenible que el transporte por carretera.
+
+### Código
+
+La realización de este gráfico es realmente sencilla, ya que simplemente hay que añadir un geom_bar() junto a un coord_polar(). Además he usado la paleta Set1 del conjunto de paletas Brewer y he puesto la leyenda debajo del gráfico.
+```{r,echo=FALSE, eval=TRUE}
+#Medios de transporte más utilizados 2019 en millones de euros
+datos <- "https://raw.githubusercontent.com/xi765/MiProyectoIndividualArchivos/main/XMMedioTransporte.csv"
+dftrans <- rio::import(datos)%>% select(-c(2)) %>% mutate( valor = str_replace(valor,"[,]","."), valor = as.numeric(valor), fila = str_remove(fila,"[[:digit:]]+"), fila = case_when( fila == "  MarÃ­timo" ~ "  Marítimo", fila == "  TrÃ¡fico postal" ~ "  Tráfico postal", fila == "  PropulsiÃ³n propia" ~ "  Propulsión propia", fila == fila ~ fila)) %>% filter(columna != "Total seleccionado")
+
+a <- inner_join( x = dftrans%>%filter(subcolumna == "EXPORT"), y = dftrans%>%filter(subcolumna == "IMPORT"), by = c("fila","columna")) %>% mutate(totalxm = (valor.x+valor.y)) %>% select(-c(3:6))
+aa <- inner_join( x = a%>%filter(fila!="Total modo transporte"), y = a %>% filter(fila=="Total modo transporte"), by = c("columna")) %>% mutate(porc = (totalxm.x/totalxm.y)) %>% select(-c(4,5)) %>% mutate(fila.x = case_when(fila.x == "  Desconocido" ~ "Otro",fila.x == "  Plataforma fija" ~ "Otro",fila.x == "  Propulsión propia" ~ "Otro",fila.x == "  Tráfico postal" ~ "Otro",fila.x == "  Transporte fluvial" ~ "Otro", fila.x == fila.x ~ fila.x)) %>% group_by(columna,fila.x) %>% summarise(totalxm.x = sum(totalxm.x), porc = sum(porc)) %>% group_by(columna) %>% mutate(fila.x = factor(fila.x, levels = fila.x[order(porc, decreasing = TRUE)]))
+
+```
+```{r,echo=TRUE, eval=TRUE, out.width = "150%"}
+ggplot(aa, aes(x = "", y=porc, fill = factor(fila.x))) +
+  geom_bar(width = 1, stat = "identity",color = "#000000") +
+  coord_polar(theta = "y", start=0) +
+  labs(fill=NULL,
+       x=NULL,
+       y=NULL,
+       title="Medios de transporte de mercancías más utilizados",
+       caption="Fuente: DataComex") + facet_wrap(vars(columna),nrow = 2, ncol = 2) +
+      scale_y_continuous(breaks = seq(0,0.8,0.2),labels = scales::percent) +
+      scale_fill_brewer(palette = "Set1") +
+      theme( strip.background = element_blank(),
+              panel.background = element_rect( fill = "#ffffff", colour = "#ffffff" ),
+              panel.grid  = element_line( colour ="#ffffff"),
+              axis.ticks = element_line(colour = "#ffffff"),
+              axis.text = element_text(size = 10, face = "bold", color = "#000000"),
+              axis.line = element_blank(),
+              plot.title = element_text(hjust = 0.5),
+              plot.background = element_rect(fill = "#ffffff"),
+              panel.border = element_blank(),
+              legend.background = element_rect(fill = "#ffffff", colour = "#ffffff"),
+              strip.text = element_text(face = "bold",colour = "black"),
+              legend.position = "bottom")
+```
+
+# 4. Trabajos en los que te has basado
+
+No he utilizado ningún trabajo en especifico como referencia, la estructura y gráficos del trabajo han sido idea mia. La mayoría de problemas que he tenido los he resuelto gracias al foro [stackoverflow](https://stackoverflow.com/) y a la web de la asignatura.En cuanto al diseño de los gráficos, he cogido ideas de [esta](http://r-statistics.co/Top50-Ggplot2-Visualizations-MasterList-R-Code.html) página web. También me ha resultado muy útil esta [viñeta](https://henrywang.nl/ggplot2-theme-elements-demonstration/) para crear los temas.
+
+# 5. Bibliografía
+* [DataComex](https://comercio.serviciosmin.gob.es/Datacomex/)
+* [Organización Mundial del Comercio](https://www.wto.org/)
+* [Banco Mundial](https://www.worldbank.org/)
